@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RoadSafe AI — Road Crossing Predictor</title>
+  <meta name="description" content="AI-powered road crossing safety predictor using YOLOv8x. Detects vehicles, estimates velocity, and recommends safe crossing windows." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- ── NAV ───────────────────────────────────────────────────────────────── -->
+  <nav class="navbar" id="navbar">
+    <div class="nav-brand">
+      <div class="brand-icon">🛣️</div>
+      <span class="brand-name">RoadSafe <span class="accent">AI</span></span>
+    </div>
+    <div class="nav-status" id="nav-status">
+      <span class="status-dot idle" id="status-dot"></span>
+      <span id="status-label">Idle</span>
+    </div>
+    <div class="nav-device" id="nav-device">—</div>
+  </nav>
+
+  <!-- ── MAIN LAYOUT ────────────────────────────────────────────────────────── -->
+  <main class="main-grid">
+
+    <!-- LEFT COLUMN ─────────────────────────────────────── -->
+    <aside class="left-col">
+
+      <!-- Upload Panel -->
+      <section class="card upload-card" id="upload-section">
+        <h2 class="card-title"><span class="icon">📤</span> Upload Road Video</h2>
+        <div class="drop-zone" id="drop-zone">
+          <div class="drop-inner">
+            <div class="drop-icon">🎬</div>
+            <p class="drop-primary">Drag & drop your video here</p>
+            <p class="drop-secondary">MP4, AVI, MOV, MKV supported</p>
+            <label class="btn btn-primary" for="file-input">Choose File</label>
+            <input type="file" id="file-input" accept="video/*" hidden />
+          </div>
+        </div>
+        <div class="selected-file" id="selected-file" style="display:none;">
+          <span class="file-name" id="file-name-label">—</span>
+          <button class="btn btn-accent" id="upload-btn">🚀 Analyse Video</button>
+        </div>
+        <div class="progress-wrap" id="progress-wrap" style="display:none;">
+          <div class="progress-bar-bg">
+            <div class="progress-bar-fill" id="progress-bar"></div>
+          </div>
+          <span class="progress-label" id="progress-label">0%</span>
+        </div>
+        <div class="status-msg" id="status-msg"></div>
+      </section>
+
+      <!-- Road Metrics -->
+      <section class="card metrics-card">
+        <h2 class="card-title"><span class="icon">📐</span> Road Metrics</h2>
+        <div class="metrics-grid">
+          <div class="metric-item">
+            <div class="metric-val" id="m-road-width">—</div>
+            <div class="metric-lbl">Road Width (m)</div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-val" id="m-avg-vel">—</div>
+            <div class="metric-lbl">Avg Speed (km/h)</div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-val" id="m-max-vel">—</div>
+            <div class="metric-lbl">Max Speed (km/h)</div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-val" id="m-total-frames">—</div>
+            <div class="metric-lbl">Frames Processed</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Velocity Distribution Chart -->
+      <section class="card chart-card">
+        <h2 class="card-title"><span class="icon">📊</span> Speed Distribution</h2>
+        <canvas id="vel-chart" height="160"></canvas>
+      </section>
+
+      <!-- Vehicle Count Chart -->
+      <section class="card chart-card">
+        <h2 class="card-title"><span class="icon">🚗</span> Vehicle Count / Second</h2>
+        <canvas id="count-chart" height="140"></canvas>
+      </section>
+
+    </aside>
+
+    <!-- CENTRE COLUMN ───────────────────────────────────── -->
+    <section class="centre-col">
+
+      <!-- Live Video Feed -->
+      <div class="card video-card">
+        <div class="video-header">
+          <h2 class="card-title no-mb"><span class="icon">🎥</span> Live Detection Feed</h2>
+          <div class="video-badges">
+            <span class="badge badge-blue" id="badge-model">YOLOv8x</span>
+            <span class="badge badge-green" id="badge-gpu">GPU</span>
+          </div>
+        </div>
+        <div class="video-wrapper" id="video-wrapper">
+          <div class="video-placeholder" id="video-placeholder">
+            <div class="placeholder-icon">🛣️</div>
+            <p>Upload a video to begin analysis</p>
+          </div>
+          <img id="stream-img" src="" alt="Live detection feed" style="display:none;" />
+        </div>
+      </div>
+
+      <!-- Safe Crossing Timeline -->
+      <div class="card timeline-card">
+        <h2 class="card-title"><span class="icon">⏱️</span> Safe Crossing Timeline</h2>
+        <div class="timeline-legend">
+          <span class="legend-dot green"></span> Safe &nbsp;&nbsp;
+          <span class="legend-dot red"></span> Dangerous &nbsp;&nbsp;
+          <span class="legend-dot yellow"></span> Risky
+        </div>
+        <div class="timeline-scroll" id="timeline-scroll">
+          <div class="timeline-empty" id="timeline-empty">Awaiting analysis...</div>
+          <div class="timeline-bar" id="timeline-bar"></div>
+        </div>
+        <div class="best-windows" id="best-windows"></div>
+      </div>
+
+    </section>
+
+    <!-- RIGHT COLUMN ────────────────────────────────────── -->
+    <aside class="right-col">
+
+      <!-- Crossing Simulator -->
+      <section class="card sim-card">
+        <h2 class="card-title"><span class="icon">🚶</span> Crossing Simulator</h2>
+        <p class="sim-desc">Choose a time and your walking speed — see if you'd survive.</p>
+
+        <div class="sim-form">
+          <div class="form-group">
+            <label for="sim-time">Cross at (seconds into video)</label>
+            <div class="input-row">
+              <input type="range" id="sim-time-range" min="0" max="120" step="0.5" value="5" />
+              <input type="number" id="sim-time" min="0" max="9999" step="0.5" value="5" class="mono-input" />
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="sim-speed">Walking speed (m/s)</label>
+            <div class="input-row">
+              <input type="range" id="sim-speed-range" min="0.5" max="4.0" step="0.1" value="1.4" />
+              <input type="number" id="sim-speed" min="0.5" max="4.0" step="0.1" value="1.4" class="mono-input" />
+            </div>
+            <div class="speed-hints">
+              <span>🚶 Slow: 0.8</span>
+              <span>🚶 Walk: 1.4</span>
+              <span>🏃 Jog: 2.5</span>
+              <span>🏃 Run: 4.0</span>
+            </div>
+          </div>
+          <button class="btn btn-primary full-width" id="simulate-btn">
+            ▶ Run Simulation
+          </button>
+        </div>
+
+        <!-- Simulation Result -->
+        <div class="sim-result" id="sim-result" style="display:none;">
+          <div class="result-banner" id="result-banner">
+            <div class="result-icon" id="result-icon">✅</div>
+            <div class="result-text">
+              <div class="result-title" id="result-title">SAFE</div>
+              <div class="result-sub" id="result-sub">—</div>
+            </div>
+          </div>
+          <!-- Advanced 2D Trajectory Simulation Canvas -->
+          <div class="sim-canvas-container" style="margin-top: 15px; margin-bottom: 15px; background: rgba(10, 15, 30, 0.6); border-radius: 8px; border: 1px solid rgba(255,255,255,0.08); overflow: hidden; position: relative;">
+            <canvas id="sim-canvas" width="400" height="180" style="display: block; width: 100%; height: auto;"></canvas>
+          </div>
+          <div class="result-stats">
+            <div class="rs-item">
+              <span class="rs-lbl">Cross time</span>
+              <span class="rs-val" id="rs-cross-time">—</span>
+            </div>
+            <div class="rs-item">
+              <span class="rs-lbl">Gap to nearest car</span>
+              <span class="rs-val" id="rs-gap">—</span>
+            </div>
+            <div class="rs-item">
+              <span class="rs-lbl">Safety margin</span>
+              <span class="rs-val" id="rs-margin">—</span>
+            </div>
+            <div class="rs-item">
+              <span class="rs-lbl">Nearest vehicle</span>
+              <span class="rs-val" id="rs-nearest">—</span>
+            </div>
+          </div>
+          <div class="result-rec" id="result-rec">—</div>
+        </div>
+      </section>
+
+      <!-- Nearest Vehicles Table -->
+      <section class="card table-card">
+        <h2 class="card-title"><span class="icon">🔍</span> Nearest Vehicles at T</h2>
+        <div id="vehicles-table-wrap">
+          <table class="vehicles-table" id="vehicles-table">
+            <thead>
+              <tr>
+                <th>ID</th><th>Class</th><th>Lane</th><th>Speed</th><th>Arrival</th><th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="vehicles-tbody">
+              <tr><td colspan="6" class="table-empty">Run simulation first</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Best Safe Windows -->
+      <section class="card windows-card">
+        <h2 class="card-title"><span class="icon">✅</span> Top Safe Moments</h2>
+        <div id="safe-moments-list">
+          <div class="empty-state">Awaiting analysis...</div>
+        </div>
+      </section>
+
+    </aside>
+
+  </main>
+
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

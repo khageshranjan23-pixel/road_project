@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# PyTorch/YOLO Weights
+*.pt
+*.onnx
+
+# Uploads and Outputs
+uploads/
+output/
+
+# Virtual Environments
+venv/
+.venv/
+env/
+
+# OS-specific files
+.DS_Store
+Thumbs.db
