@@ -1,6 +1,8 @@
 # 🛣️ RoadSafe AI — Road Crossing Safety Predictor
 
-AI-powered localhost tool that uses **YOLOv8x + GPU** to:
+**🌍 Live Demo:** [Play RoadSafe AI on Hugging Face Spaces](https://huggingface.co/spaces/Khageshranjan/roadsafe-ai)
+
+AI-powered tool that uses **YOLOv8x + GPU** to:
 - Detect & track all vehicles in a road video
 - Estimate each car's **velocity** (km/h)
 - Calculate **road width** automatically
