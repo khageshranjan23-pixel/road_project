@@ -559,3 +559,112 @@ canvas { max-width: 100%; }
 .right-col .card:nth-child(1) { animation-delay: 0.11s; }
 .right-col .card:nth-child(2) { animation-delay: 0.18s; }
 .right-col .card:nth-child(3) { animation-delay: 0.24s; }
+
+/* ── Crossing Controls Bar ───────────────────────────────────────────────── */
+.crossing-controls {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; margin-top: 8px;
+  padding: 8px 14px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  flex-wrap: wrap;
+}
+.cc-left  { display: flex; align-items: center; gap: 8px; flex: 1; }
+.cc-right { display: flex; align-items: center; gap: 8px; }
+.cc-label { font-size: 0.73rem; color: var(--text-2); white-space: nowrap; font-weight: 500; }
+
+/* ── Safety Badge ────────────────────────────────────────────────────────── */
+.safety-badge {
+  font-size: 0.72rem; font-weight: 800;
+  padding: 4px 14px; border-radius: 99px;
+  letter-spacing: 0.3px; white-space: nowrap;
+  transition: all 0.3s;
+  background: rgba(136,153,180,0.12);
+  color: var(--text-2);
+  border: 1px solid rgba(136,153,180,0.2);
+}
+.safety-badge.safe {
+  background: rgba(16,217,113,0.12); color: var(--green);
+  border-color: rgba(16,217,113,0.3);
+  box-shadow: 0 0 16px rgba(16,217,113,0.2);
+  animation: none;
+}
+.safety-badge.risky {
+  background: rgba(245,158,11,0.12); color: var(--yellow);
+  border-color: rgba(245,158,11,0.3);
+  animation: pulse-amber 1.4s ease-in-out infinite;
+}
+.safety-badge.danger {
+  background: rgba(244,63,94,0.15); color: var(--red);
+  border-color: rgba(244,63,94,0.35);
+  animation: pulse-red 0.7s ease-in-out infinite;
+}
+@keyframes pulse-amber {
+  0%,100% { box-shadow: 0 0 8px rgba(245,158,11,0.2); }
+  50%      { box-shadow: 0 0 20px rgba(245,158,11,0.5); }
+}
+@keyframes pulse-red {
+  0%,100% { box-shadow: 0 0 10px rgba(244,63,94,0.3); }
+  50%      { box-shadow: 0 0 24px rgba(244,63,94,0.7); }
+}
+
+/* canvas fills the video-wrapper exactly */
+#video-canvas {
+  position: absolute; inset: 0;
+  width: 100% !important; height: 100% !important;
+  object-fit: contain;
+  z-index: 2;
+}
+
+#processed-video {
+  position: absolute; inset: 0;
+  width: 100% !important; height: 100% !important;
+  object-fit: contain;
+  border-radius: var(--radius-sm);
+  background: #000;
+  z-index: 1;
+}
+
+/* processing lock overlay */
+#processing-lock {
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 8px; padding: 14px;
+  background: rgba(10, 15, 30, 0.6);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  margin-top: 8px;
+}
+.lock-icon { font-size: 1.6rem; }
+.lock-text {
+  font-size: 0.8rem; color: var(--text-2);
+  text-align: center; line-height: 1.5;
+}
+.lock-text span { color: var(--text-3); font-size: 0.72rem; }
+
+/* crossing controls rows */
+.cc-row {
+  display: flex; align-items: center; gap: 8px;
+  flex-wrap: wrap; margin-bottom: 6px;
+}
+.cc-row:last-child { margin-bottom: 0; }
+
+/* CROSS button */
+.btn-cross {
+  background: linear-gradient(135deg, var(--green), #0eb85e);
+  color: #fff; font-weight: 800;
+  padding: 8px 20px; border-radius: 99px;
+  border: none; cursor: pointer;
+  font-size: 0.82rem;
+  transition: all 0.2s;
+  box-shadow: 0 0 12px rgba(16,217,113,0.3);
+}
+.btn-cross:hover {
+  transform: scale(1.05);
+  box-shadow: 0 0 20px rgba(16,217,113,0.5);
+}
+.btn-cross:disabled {
+  opacity: 0.5; cursor: wait;
+  transform: none;
+}

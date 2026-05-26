@@ -94,21 +94,46 @@
     <!-- CENTRE COLUMN ───────────────────────────────────── -->
     <section class="centre-col">
 
-      <!-- Live Video Feed -->
       <div class="card video-card">
         <div class="video-header">
           <h2 class="card-title no-mb"><span class="icon">🎥</span> Live Detection Feed</h2>
           <div class="video-badges">
             <span class="badge badge-blue" id="badge-model">YOLOv8x</span>
             <span class="badge badge-green" id="badge-gpu">GPU</span>
+            <span class="badge" id="badge-view" style="display:none;">—</span>
           </div>
         </div>
-        <div class="video-wrapper" id="video-wrapper">
+        <div class="video-wrapper" id="video-wrapper" style="position:relative;">
           <div class="video-placeholder" id="video-placeholder">
             <div class="placeholder-icon">🛣️</div>
             <p>Upload a video to begin analysis</p>
           </div>
-          <img id="stream-img" src="" alt="Live detection feed" style="display:none;" />
+          <!-- Live stream during processing -->
+          <img id="stream-src" src="" alt="" style="display:none;" />
+          <canvas id="video-canvas" style="display:none; width:100%; height:auto; cursor:crosshair;"></canvas>
+          <!-- Processed video for playback (added later) -->
+          <video id="processed-video" style="display:none; width:100%; height:auto;" controls></video>
+        </div>
+        <!-- Processing lock overlay -->
+        <div id="processing-lock" style="display:none;">
+          <div class="lock-icon">⏳</div>
+          <div class="lock-text">Video is processing…<br><span>Crossing controls will unlock when done.</span></div>
+        </div>
+        <!-- Crossing controls (shown after processing) -->
+        <div class="crossing-controls" id="crossing-controls" style="display:none;">
+          <div class="cc-row">
+            <span class="cc-label">🚶 Walking speed:</span>
+            <input type="range" id="cc-speed-range" min="0.5" max="4.0" step="0.1" value="1.4" />
+            <input type="number" id="cc-speed-val" min="0.5" max="4.0" step="0.1" value="1.4"
+                   class="mono-input" style="width:54px;" />
+            <span class="cc-label">m/s</span>
+          </div>
+          <div class="cc-row">
+            <div class="safety-badge" id="safety-badge">— Position crossing line on road —</div>
+            <button class="btn btn-cross" id="cross-btn">🚶 CROSS NOW</button>
+            <button class="btn btn-accent" id="reset-line-btn" style="font-size:11px;padding:5px 12px;">↺ Reset</button>
+            <button class="btn btn-accent" id="rewind-btn" style="font-size:11px;padding:5px 12px;">⏪ Rewind</button>
+          </div>
         </div>
       </div>
 
@@ -134,34 +159,8 @@
 
       <!-- Crossing Simulator -->
       <section class="card sim-card">
-        <h2 class="card-title"><span class="icon">🚶</span> Crossing Simulator</h2>
-        <p class="sim-desc">Choose a time and your walking speed — see if you'd survive.</p>
-
-        <div class="sim-form">
-          <div class="form-group">
-            <label for="sim-time">Cross at (seconds into video)</label>
-            <div class="input-row">
-              <input type="range" id="sim-time-range" min="0" max="120" step="0.5" value="5" />
-              <input type="number" id="sim-time" min="0" max="9999" step="0.5" value="5" class="mono-input" />
-            </div>
-          </div>
-          <div class="form-group">
-            <label for="sim-speed">Walking speed (m/s)</label>
-            <div class="input-row">
-              <input type="range" id="sim-speed-range" min="0.5" max="4.0" step="0.1" value="1.4" />
-              <input type="number" id="sim-speed" min="0.5" max="4.0" step="0.1" value="1.4" class="mono-input" />
-            </div>
-            <div class="speed-hints">
-              <span>🚶 Slow: 0.8</span>
-              <span>🚶 Walk: 1.4</span>
-              <span>🏃 Jog: 2.5</span>
-              <span>🏃 Run: 4.0</span>
-            </div>
-          </div>
-          <button class="btn btn-primary full-width" id="simulate-btn">
-            ▶ Run Simulation
-          </button>
-        </div>
+        <h2 class="card-title"><span class="icon">🚶</span> Crossing Safety</h2>
+        <p class="sim-desc">Position the line and click CROSS NOW to see your safety margin.</p>
 
         <!-- Simulation Result -->
         <div class="sim-result" id="sim-result" style="display:none;">

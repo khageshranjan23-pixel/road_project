@@ -6,15 +6,18 @@ Handles video upload, background processing, MJPEG streaming, and all REST APIs.
 """
 
 import os
-import cv2
-import json
-import time
-import threading
 import uuid
+import time
+import json
+import threading
+import subprocess
+import cv2
+import numpy as np
+import imageio_ffmpeg
 from flask import Flask, request, jsonify, Response, send_from_directory
 from flask_cors import CORS
 
-from detector import VehicleTracker
+from detector import VehicleTracker, estimate_geometry
 from road_analyzer import compute_crossing_windows, simulate_crossing
 
 # ── Flask setup ───────────────────────────────────────────────────────────────
@@ -28,8 +31,8 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 # ── Global state (single-session, localhost) ──────────────────────────────────
 state = {
-    "status":        "idle",          # idle | processing | done | error
-    "progress":      0,               # 0–100
+    "status":        "idle",
+    "progress":      0,
     "message":       "",
     "frame_results": [],
     "analytics":     {},
@@ -37,10 +40,11 @@ state = {
     "tracker":       None,
     "video_path":    None,
     "output_path":   None,
-    "current_frame": None,            # latest annotated frame (JPEG bytes)
+    "current_frame": None,
     "frame_lock":    threading.Lock(),
     "total_frames":  0,
     "error":         None,
+    "geometry":      None,
 }
 
 
@@ -64,14 +68,31 @@ def process_video(video_path: str):
         total  = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         state["total_frames"] = total
 
+        # ── Geometry warmup: sample 30 frames evenly for VP detection ─────
+        state["message"] = "Analysing road geometry…"
+        warmup_frames = []
+        warmup_indices = np.linspace(0, max(total-1, 0), min(30, total), dtype=int)
+        for wi in warmup_indices:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, int(wi))
+            ret, wf = cap.read()
+            if ret:
+                warmup_frames.append(wf)
+        cap.set(cv2.CAP_PROP_POS_FRAMES, 0)   # rewind
+
+        geo = estimate_geometry(warmup_frames) if warmup_frames else None
+        state["geometry"] = geo
+
         # Output video writer
+        temp_out_path = os.path.join(OUTPUT_DIR, "temp_processed.mp4")
         out_path = os.path.join(OUTPUT_DIR, "processed.mp4")
         fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-        writer = cv2.VideoWriter(out_path, fourcc, fps, (width, height))
+        writer = cv2.VideoWriter(temp_out_path, fourcc, fps, (width, height))
         state["output_path"] = out_path
 
         tracker = VehicleTracker(model_path="yolov8m.pt", conf=0.35)
         tracker.set_video_meta(width, height, fps)
+        if geo:
+            tracker.set_geometry(geo)
         state["tracker"] = tracker
 
         frame_idx = 0
@@ -94,6 +115,21 @@ def process_video(video_path: str):
 
         cap.release()
         writer.release()
+
+        state["progress"] = 99
+        state["message"] = "Encoding video for browser playback..."
+        ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+        subprocess.run([
+            ffmpeg_exe, "-y", "-i", temp_out_path,
+            "-c:v", "libx264", "-preset", "fast", "-crf", "23",
+            out_path
+        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+        if os.path.exists(temp_out_path):
+            try:
+                os.remove(temp_out_path)
+            except Exception:
+                pass
 
         # Finalise analytics
         analytics = tracker.get_analytics()
@@ -124,6 +160,10 @@ def process_video(video_path: str):
 @app.route("/")
 def index():
     return send_from_directory("static", "index.html")
+
+@app.route("/runs/<path:filename>")
+def serve_run_file(filename):
+    return send_from_directory(OUTPUT_DIR, filename)
 
 
 @app.route("/upload", methods=["POST"])
@@ -207,6 +247,14 @@ def crossings():
     })
 
 
+@app.route("/geometry")
+def geometry():
+    geo = state.get("geometry")
+    if not geo:
+        return jsonify({"error": "No geometry computed yet."}), 404
+    return jsonify(geo)
+
+
 @app.route("/frame_results")
 def frame_results():
     """Return a summary of per-second vehicle data (not full frames)."""
@@ -267,6 +315,7 @@ def reset():
         "frame_results": [], "analytics": {}, "windows": [],
         "tracker": None, "video_path": None, "output_path": None,
         "current_frame": None, "total_frames": 0, "error": None,
+        "geometry": None,
     })
     return jsonify({"message": "Reset complete."})
 

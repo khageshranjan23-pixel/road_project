@@ -19,3 +19,6 @@ env/
 # OS-specific files
 .DS_Store
 Thumbs.db
+
+# VS Code workspace settings (machine-specific)
+.vscode/
