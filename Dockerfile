@@ -33,4 +33,5 @@ RUN mkdir -p /app/uploads && chmod 777 /app/uploads
 
 # Run the application using Gunicorn
 # Using 1 worker and multiple threads due to background thread processing in app.py
-CMD ["gunicorn", "--bind", "0.0.0.0:7860", "--workers", "1", "--threads", "8", "--timeout", "120", "app:app"]
+# Increased timeout and request limits for large video uploads
+CMD ["gunicorn", "--bind", "0.0.0.0:7860", "--workers", "1", "--threads", "8", "--timeout", "300", "--limit-request-line", "8190", "--limit-request-fields", "200", "app:app"]

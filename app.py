@@ -21,6 +21,9 @@ from road_analyzer import compute_crossing_windows, simulate_crossing
 app = Flask(__name__, static_folder="static", static_url_path="")
 CORS(app)
 
+# Allow large video uploads up to 500 MB
+app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024
+
 UPLOAD_DIR = "uploads"
 OUTPUT_DIR = "output"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
