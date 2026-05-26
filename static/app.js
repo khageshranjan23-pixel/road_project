@@ -461,12 +461,17 @@ if (simulateBtn) {
 
     simulateBtn.textContent = "⏳ Simulating…";
     simulateBtn.disabled = true;
-
     try {
       const res = await fetch(`${API}/simulate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ time: t, speed: s }),
+        body: JSON.stringify({
+          time: t,
+          speed: s,
+          crossing_y_frac: overlay ? (overlay.lineY / overlay.canvas.height) : 0.5,
+          geometry: overlay ? overlay.geo : null,
+          selected_road_index: overlay ? overlay.selectedRoad : 0
+        })
       });
       const data = await res.json();
       if (data.error) { alert(data.error); return; }
@@ -812,7 +817,13 @@ crossBtn && crossBtn.addEventListener("click", async () => {
     const res = await fetch(`${API}/simulate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ time: t, speed: s, crossing_y_frac: yFrac }),
+      body: JSON.stringify({
+        time: t,
+        speed: s,
+        crossing_y_frac: yFrac,
+        geometry: overlay.geo,
+        selected_road_index: overlay.selectedRoad
+      }),
     });
     const data = await res.json();
     if (data.error) { alert(data.error); return; }
@@ -860,6 +871,7 @@ class CrossingOverlay {
     this.lineYFrac = null;
     this._drag     = false;
     this._dragOffY = 0;
+    this._dragHandle = null;
     this._tick     = 0;
     this._locked   = true;
     this._roadPickerActive = false;
@@ -989,6 +1001,23 @@ class CrossingOverlay {
       ctx.textAlign = "center";
       if (this.geo.roads.length > 1) ctx.fillText("Road " + (ri + 1), mx, bottomY - 8);
       ctx.textAlign = "left";
+      if (ri === this.selectedRoad) {
+        const handles = [
+          { x: lxt, y: topY },
+          { x: lxb, y: bottomY },
+          { x: rxt, y: topY },
+          { x: rxb, y: bottomY }
+        ];
+        for (const h of handles) {
+          ctx.beginPath();
+          ctx.arc(h.x, h.y, 8, 0, Math.PI * 2);
+          ctx.fillStyle = "#ffffff";
+          ctx.fill();
+          ctx.strokeStyle = col;
+          ctx.lineWidth = 3;
+          ctx.stroke();
+        }
+      }
       ctx.restore();
     }
 
@@ -1086,11 +1115,11 @@ class CrossingOverlay {
     const c = this.canvas;
     c.addEventListener("mousedown",  e => this._onDown(e));
     c.addEventListener("mousemove",  e => this._onMove(e));
-    c.addEventListener("mouseup",    () => { this._drag = false; c.style.cursor = "crosshair"; });
-    c.addEventListener("mouseleave", () => { this._drag = false; c.style.cursor = "crosshair"; });
+    c.addEventListener("mouseup",    () => { this._drag = false; this._dragHandle = null; c.style.cursor = "crosshair"; });
+    c.addEventListener("mouseleave", () => { this._drag = false; this._dragHandle = null; c.style.cursor = "crosshair"; });
     c.addEventListener("touchstart", e => { e.preventDefault(); this._onDown(e.touches[0]); }, { passive: false });
     c.addEventListener("touchmove",  e => { e.preventDefault(); this._onMove(e.touches[0]); }, { passive: false });
-    c.addEventListener("touchend",   () => { this._drag = false; });
+    c.addEventListener("touchend",   () => { this._drag = false; this._dragHandle = null; });
   }
 
   _pos(e) {
@@ -1125,18 +1154,115 @@ class CrossingOverlay {
       return;
     }
 
-    if (this._locked || this.lineY === null) return;
-    if (Math.abs(y - this.lineY) < 16) {
+    if (this._locked) return;
+
+    // Check if clicked near road boundary handles
+    if (this.selectedRoad !== null && this.geo) {
+      const road = this._road();
+      if (road) {
+        const sw = this.canvas.width / (this.geo.frame_width || this.canvas.width);
+        const sh = this.canvas.height / (this.geo.frame_height || this.canvas.height);
+        const topY = Math.round(this.geo.road_top_y * sh);
+        const bottomY = this.canvas.height;
+
+        const lxb = road.left_line[0][0] * sw;
+        const lxt = road.left_line[1][0] * sw;
+        const rxb = road.right_line[0][0] * sw;
+        const rxt = road.right_line[1][0] * sw;
+
+        const handles = [
+          { x: lxt, y: topY, id: "LT" },
+          { x: lxb, y: bottomY, id: "LB" },
+          { x: rxt, y: topY, id: "RT" },
+          { x: rxb, y: bottomY, id: "RB" }
+        ];
+
+        for (const h of handles) {
+          if (Math.hypot(x - h.x, y - h.y) < 18) {
+            this._dragHandle = h.id;
+            return;
+          }
+        }
+      }
+    }
+
+    // Drag crossing line
+    if (this.lineY !== null && Math.abs(y - this.lineY) < 16) {
       this._drag = true;
       this._dragOffY = y - this.lineY;
     }
   }
 
   _onMove(e) {
-    if (!this._drag) return;
-    const { y } = this._pos(e);
-    const newY = y - this._dragOffY;
-    this.lineY = Math.max(this._minY(), Math.min(this.canvas.height - 2, newY));
-    this.canvas.style.cursor = "ns-resize";
+    const { x, y } = this._pos(e);
+
+    // If dragging road handle
+    if (this._dragHandle) {
+      const road = this._road();
+      if (road) {
+        const sw = this.canvas.width / (this.geo.frame_width || this.canvas.width);
+        const srcX = Math.max(0, Math.min((this.geo.frame_width || this.canvas.width) - 1, Math.round(x / sw)));
+
+        if (this._dragHandle === "LT") {
+          road.left_line[1][0] = srcX;
+        } else if (this._dragHandle === "LB") {
+          road.left_line[0][0] = srcX;
+        } else if (this._dragHandle === "RT") {
+          road.right_line[1][0] = srcX;
+        } else if (this._dragHandle === "RB") {
+          road.right_line[0][0] = srcX;
+        }
+        this.canvas.style.cursor = "ew-resize";
+        return;
+      }
+    }
+
+    // If dragging crossing line
+    if (this._drag) {
+      const newY = y - this._dragOffY;
+      this.lineY = Math.max(this._minY(), Math.min(this.canvas.height - 2, newY));
+      this.canvas.style.cursor = "ns-resize";
+      return;
+    }
+
+    // Hover styling
+    if (this._locked) return;
+    
+    // Check road handle hovers
+    if (this.selectedRoad !== null && this.geo) {
+      const road = this._road();
+      if (road) {
+        const sw = this.canvas.width / (this.geo.frame_width || this.canvas.width);
+        const sh = this.canvas.height / (this.geo.frame_height || this.canvas.height);
+        const topY = Math.round(this.geo.road_top_y * sh);
+        const bottomY = this.canvas.height;
+        
+        const lxb = road.left_line[0][0] * sw;
+        const lxt = road.left_line[1][0] * sw;
+        const rxb = road.right_line[0][0] * sw;
+        const rxt = road.right_line[1][0] * sw;
+
+        const handles = [
+          { x: lxt, y: topY },
+          { x: lxb, y: bottomY },
+          { x: rxt, y: topY },
+          { x: rxb, y: bottomY }
+        ];
+
+        for (const h of handles) {
+          if (Math.hypot(x - h.x, y - h.y) < 18) {
+            this.canvas.style.cursor = "ew-resize";
+            return;
+          }
+        }
+      }
+    }
+
+    // Check crossing line hover
+    if (this.lineY !== null && Math.abs(y - this.lineY) < 16) {
+      this.canvas.style.cursor = "ns-resize";
+    } else {
+      this.canvas.style.cursor = "crosshair";
+    }
   }
 }

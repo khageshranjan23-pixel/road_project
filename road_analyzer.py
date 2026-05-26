@@ -156,7 +156,9 @@ def simulate_crossing(
             continue
 
         # Determine lane based on horizontal position (cx)
-        lane = 1 + int((cx / max(frame_width, 1)) * num_lanes)
+        lane = v_info.get("lane")
+        if lane is None:
+            lane = 1 + int((cx / max(frame_width, 1)) * num_lanes)
         lane = max(1, min(num_lanes, lane))
 
         # Time when this vehicle crosses the line

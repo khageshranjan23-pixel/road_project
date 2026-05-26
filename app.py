@@ -66,6 +66,38 @@ def process_video(video_path: str):
         width  = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         total  = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+        # Check for WebM variable framerate or other abnormal FPS reported by OpenCV
+        if fps >= 100.0 or fps < 5.0 or total > 100000 or total <= 0:
+            state["message"] = "Probing video characteristics..."
+            # Count actual frames using fast grab
+            actual_frames = 0
+            while cap.grab():
+                actual_frames += 1
+            cap.set(cv2.CAP_PROP_POS_FRAMES, 0) # rewind
+
+            # Extract actual duration using ffmpeg
+            duration_s = 30.0
+            try:
+                ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+                res = subprocess.run(
+                    [ffmpeg_exe, "-i", video_path],
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+                )
+                import re
+                match = re.search(r"Duration:\s*(\d+):(\d+):([\d.]+)", res.stderr)
+                if match:
+                    hours, minutes, seconds = match.groups()
+                    duration_s = int(hours) * 3600 + int(minutes) * 60 + float(seconds)
+            except Exception:
+                pass
+
+            if duration_s > 0:
+                fps = actual_frames / duration_s
+            else:
+                fps = 30.0
+            total = actual_frames
+
         state["total_frames"] = total
 
         # ── Geometry warmup: sample 30 frames evenly for VP detection ─────
@@ -297,13 +329,71 @@ def simulate():
 
     road_w = state["analytics"].get("road_width_m", 7.0)
     frame_width = state["tracker"].frame_width if state["tracker"] else 1920
-    
+    fps = state["analytics"].get("fps", 30.0)
+
+    # Recalculate vehicle metrics based on user's selected crossing line and road boundaries
+    import copy
+    frame_results = copy.deepcopy(state["frame_results"])
+
+    crossing_y_frac = data.get("crossing_y_frac")
+    geometry = data.get("geometry")
+
+    # Determine which geometry to use (default or adjusted)
+    geo = geometry if (geometry and "roads" in geometry) else state.get("geometry")
+
+    if geo and "roads" in geo and len(geo["roads"]) > 0:
+        road_idx = int(data.get("selected_road_index", 0) or 0)
+        if road_idx < len(geo["roads"]):
+            road = geo["roads"][road_idx]
+            h = geo.get("frame_height", 720)
+            crossing_y = float(crossing_y_frac) * h if crossing_y_frac is not None else geo.get("default_crossing_y", h * 0.5)
+            mpp = state["analytics"].get("mpp", 0.008)
+            num_lanes = 3
+
+            lxb, lyb = road["left_line"][0]
+            lxt, lyt = road["left_line"][1]
+            rxb, ryb = road["right_line"][0]
+            rxt, ryt = road["right_line"][1]
+
+            for fr in frame_results:
+                for v in fr["vehicles"]:
+                    cx, cy = v["centroid"]
+
+                    # 1. Recalculate distance from crossing line
+                    dist_px = cy - crossing_y
+                    if dist_px > 0:
+                        v["dist_m"] = round(dist_px * mpp, 2)
+                        vel = v.get("velocity_kmh")
+                        if vel and vel > 0.5:
+                            v["tta_s"] = round(v["dist_m"] / (vel / 3.6), 2)
+                        else:
+                            v["tta_s"] = None
+                    else:
+                        v["dist_m"] = -1.0
+                        v["tta_s"] = None
+
+                    # 2. Recalculate vehicle lane position relative to perspective boundaries at vehicle's cy
+                    t_left = 0.0 if abs(lyb - lyt) < 1 else (cy - lyb) / (lyt - lyb)
+                    t_right = 0.0 if abs(ryb - ryt) < 1 else (cy - ryb) / (ryt - ryb)
+                    
+                    left_x = lxb + t_left * (lxt - lxb)
+                    right_x = rxb + t_right * (rxt - rxb)
+
+                    road_w_px = right_x - left_x
+                    if road_w_px > 0:
+                        rel_x = cx - left_x
+                        v_lane = 1 + int((rel_x / road_w_px) * num_lanes)
+                        v["lane"] = max(1, min(num_lanes, v_lane))
+                    else:
+                        v["lane"] = 2
+
     result = simulate_crossing(
-        frame_results=state["frame_results"],
+        frame_results=frame_results,
         start_time=start_time,
         ped_speed=ped_speed,
         road_width_m=road_w,
         frame_width=frame_width,
+        fps=fps,
     )
     return jsonify(result)
 
