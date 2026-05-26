@@ -1,3 +1,12 @@
+---
+title: RoadSafe AI
+emoji: 🛣️
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+pinned: false
+---
+
 # 🛣️ RoadSafe AI — Road Crossing Safety Predictor
 
 **🌍 Live Demo:** [Play RoadSafe AI on Hugging Face Spaces](https://huggingface.co/spaces/Khageshranjan/roadsafe-ai)
