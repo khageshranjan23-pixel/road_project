@@ -19,7 +19,7 @@ let countChart = null;
 let analyticsData = null;
 let crossingWindows = [];
 let maxVideoTime = 120;
-let simAnimId = null;
+let simulator3D = null;
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
 const dropZone      = document.getElementById("drop-zone");
@@ -337,6 +337,35 @@ simulateBtn.addEventListener("click", async () => {
   const s = parseFloat(simSpeed.value);
   if (isNaN(t) || isNaN(s)) return;
 
+  const payload = { time: t, speed: s };
+  
+  if (simulator3D) {
+    const pathType = document.getElementById("sim-path-type").value;
+    simulator3D.pathType = pathType;
+    
+    if (pathType === 'diagonal-left') {
+      payload.start_x = 0;
+      payload.start_z = -6.0;
+      payload.end_x = simulator3D.roadWidth;
+      payload.end_z = 6.0;
+    } else if (pathType === 'diagonal-right') {
+      payload.start_x = 0;
+      payload.start_z = 6.0;
+      payload.end_x = simulator3D.roadWidth;
+      payload.end_z = -6.0;
+    } else if (pathType === 'custom') {
+      if (simulator3D.customStartPoint && simulator3D.customEndPoint) {
+        payload.start_x = simulator3D.customStartPoint.x;
+        payload.start_z = simulator3D.customStartPoint.z;
+        payload.end_x = simulator3D.customEndPoint.x;
+        payload.end_z = simulator3D.customEndPoint.z;
+      } else {
+        alert("Please click two points in the 3D view to set custom path start & end points!");
+        return;
+      }
+    }
+  }
+
   simulateBtn.textContent = "⏳ Simulating…";
   simulateBtn.disabled = true;
 
@@ -344,7 +373,7 @@ simulateBtn.addEventListener("click", async () => {
     const res = await fetch(`${API}/simulate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ time: t, speed: s }),
+      body: JSON.stringify(payload),
     });
     const data = await res.json();
     if (data.error) { alert(data.error); return; }
@@ -437,179 +466,14 @@ function displaySimResult(data) {
     }).join("");
   }
 
-  // Run visual canvas animation
-  runSimAnimation(data);
+  // Run visual 3D simulation
+  if (!simulator3D) {
+    simulator3D = new Road3DSimulator("sim-canvas");
+  }
+  simulator3D.startSimulation(data);
 
   // Scroll to result
   simResult.scrollIntoView({ behavior: "smooth", block: "nearest" });
-}
-
-function runSimAnimation(data) {
-  const canvas = document.getElementById("sim-canvas");
-  if (!canvas) return;
-  const ctx = canvas.getContext("2d");
-  
-  if (simAnimId) {
-    cancelAnimationFrame(simAnimId);
-  }
-  
-  const width = canvas.width;
-  const height = canvas.height;
-  const numLanes = data.num_lanes || 3;
-  const laneHeight = height / numLanes;
-  const crossingX = 120; // Pedestrian crosses vertically at x = 120
-  const scale = 10; // Pixels per meter
-  
-  let t = 0;
-  const dt = 0.016; // ~60 FPS step
-  const crossTime = data.cross_time;
-  const pedSpeed = data.ped_speed;
-  const roadWidth = data.road_width_m;
-  const vehicles = data.simulated_vehicles || [];
-  
-  let collisionTime = null;
-  let collisionLane = null;
-  if (data.collisions && data.collisions.length > 0) {
-    collisionTime = data.collisions[0].time;
-    collisionLane = data.collisions[0].lane;
-  }
-  
-  function draw() {
-    // 1. Draw Road Background
-    ctx.fillStyle = "#111625";
-    ctx.fillRect(0, 0, width, height);
-    
-    // Draw Lane Dividers
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.08)";
-    ctx.lineWidth = 2;
-    for (let i = 1; i < numLanes; i++) {
-      ctx.beginPath();
-      ctx.setLineDash([8, 8]);
-      ctx.moveTo(0, i * laneHeight);
-      ctx.lineTo(width, i * laneHeight);
-      ctx.stroke();
-    }
-    ctx.setLineDash([]); // Reset dash
-    
-    // Draw Crossing Stripes (Zebra Crossing)
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.15)";
-    ctx.lineWidth = 14;
-    for (let y = 6; y < height; y += 18) {
-      ctx.beginPath();
-      ctx.moveTo(crossingX - 10, y);
-      ctx.lineTo(crossingX + 10, y);
-      ctx.stroke();
-    }
-    
-    // Draw Lane Labels
-    ctx.fillStyle = "rgba(136, 153, 180, 0.3)";
-    ctx.font = "9px 'JetBrains Mono', monospace";
-    for (let i = 1; i <= numLanes; i++) {
-      ctx.fillText(`LANE ${i}`, 15, height - (i - 0.5) * laneHeight + 3);
-    }
-    
-    // Draw Vehicles
-    vehicles.forEach(v => {
-      const velMs = (v.velocity_kmh / 3.6);
-      // Position calculated from current simulated time step
-      const currentDist = v.init_dist_m - velMs * t;
-      const x = crossingX + currentDist * scale;
-      const y = height - (v.lane - 0.5) * laneHeight; // vertical center of lane
-      
-      const vLen = (v.class === "car" || v.class === "truck" || v.class === "bus") ? 4.5 : 2.2;
-      const wPx = vLen * scale;
-      const hPx = laneHeight * 0.5;
-      
-      // Vehicle color scheme
-      let color = "rgba(91, 141, 238, 0.8)"; // Blue for normal vehicles
-      if (v.class === "motorcycle" || v.class === "bicycle") {
-        color = "rgba(245, 158, 11, 0.8)"; // Orange for two-wheelers
-      } else if (v.class === "truck" || v.class === "bus") {
-        color = "rgba(167, 139, 250, 0.8)"; // Violet for large vehicles
-      }
-      
-      // Check if vehicle is currently colliding in the active window
-      const isCollidingNow = v.collision && t >= v.t_enter && t <= v.t_exit;
-      if (isCollidingNow) {
-        color = `rgba(244, 63, 94, ${Math.floor(Date.now() / 150) % 2 ? 0.9 : 0.4})`; // Blinking Red
-      }
-      
-      ctx.fillStyle = color;
-      if (ctx.roundRect) {
-        ctx.beginPath();
-        ctx.roundRect(x, y - hPx / 2, wPx, hPx, 4);
-        ctx.fill();
-      } else {
-        ctx.fillRect(x, y - hPx / 2, wPx, hPx);
-      }
-      
-      // Draw label
-      ctx.fillStyle = "#ffffff";
-      ctx.font = "bold 8px system-ui";
-      ctx.fillText(`#${v.id}`, x + 3, y + 2.5);
-    });
-    
-    // Draw Pedestrian (YOU)
-    let pedY = height;
-    let collided = false;
-    let pedActive = true;
-    
-    if (collisionTime !== null && t >= collisionTime) {
-      const colPedY = height - (collisionTime / crossTime) * height;
-      pedY = colPedY;
-      collided = true;
-    } else if (t >= crossTime) {
-      pedY = 0;
-      pedActive = false;
-    } else {
-      pedY = height - (t / crossTime) * height;
-    }
-    
-    // Glowing effect
-    ctx.shadowBlur = 12;
-    ctx.shadowColor = collided ? "rgba(244, 63, 94, 0.85)" : "rgba(16, 217, 113, 0.85)";
-    ctx.fillStyle = collided ? "#f43f5e" : "#10d971";
-    ctx.beginPath();
-    ctx.arc(crossingX, pedY, 7, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.shadowBlur = 0; // Reset shadow
-    
-    ctx.fillStyle = "#ffffff";
-    ctx.font = "bold 9px system-ui";
-    ctx.fillText("YOU", crossingX + 12, pedY + 3);
-    
-    // 3. Draw Simulation Timer & Status Header
-    ctx.fillStyle = "rgba(10, 15, 30, 0.85)";
-    ctx.fillRect(0, 0, width, 24);
-    
-    ctx.fillStyle = "#8899b4";
-    ctx.font = "10px 'JetBrains Mono', monospace";
-    ctx.fillText(`TIME: ${t.toFixed(2)}s / ${crossTime.toFixed(1)}s`, 10, 16);
-    
-    if (collided) {
-      ctx.fillStyle = "#f43f5e";
-      ctx.font = "bold 10px system-ui";
-      ctx.fillText("💥 COLLISION!", width - 95, 16);
-    } else if (!pedActive) {
-      ctx.fillStyle = "#10d971";
-      ctx.font = "bold 10px system-ui";
-      ctx.fillText("✅ SUCCESS!", width - 85, 16);
-    } else {
-      ctx.fillStyle = "#5b8dee";
-      ctx.font = "bold 10px system-ui";
-      ctx.fillText("🚶 WALKING...", width - 90, 16);
-    }
-    
-    // Increment time
-    t += dt;
-    
-    // Continue loop until pedestrian finishes crossing or hit
-    if (t < crossTime + 1.2 && (!collided || t < collisionTime + 0.8)) {
-      simAnimId = requestAnimationFrame(draw);
-    }
-  }
-  
-  draw();
 }
 
 function resetUI() {
@@ -630,14 +494,8 @@ function resetUI() {
   analyticsData   = null;
   crossingWindows = [];
   
-  if (simAnimId) {
-    cancelAnimationFrame(simAnimId);
-    simAnimId = null;
-  }
-  const canvas = document.getElementById("sim-canvas");
-  if (canvas) {
-    const ctx = canvas.getContext("2d");
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (simulator3D) {
+    simulator3D.stop();
   }
 }
 
@@ -647,3 +505,172 @@ document.addEventListener("keydown", e => {
     simulateBtn.click();
   }
 });
+
+// --- DOM Initialization & Selection event wiring ---
+document.addEventListener("DOMContentLoaded", () => {
+  // Initialize the 3D simulator on page load
+  if (!simulator3D) {
+    simulator3D = new Road3DSimulator("sim-canvas");
+  }
+  
+  const levelSelect = document.getElementById("game-level-select");
+  if (levelSelect && simulator3D) {
+    simulator3D.gameLevel = levelSelect.value;
+    levelSelect.addEventListener("change", (e) => {
+      simulator3D.gameLevel = e.target.value;
+      if (simulator3D.active) simulator3D.restartSimulation();
+    });
+  }
+  
+  const pathSelect = document.getElementById("sim-path-type");
+  const customHint = document.getElementById("custom-path-hint");
+  const customControls = document.getElementById("custom-path-controls");
+  
+  function syncCustomPathFromDOM() {
+    if (!simulator3D) return;
+    const startLaneVal = document.getElementById('custom-start-lane').value;
+    const startZ = parseFloat(document.getElementById('custom-start-z').value);
+    const endLaneVal = document.getElementById('custom-end-lane').value;
+    const endZ = parseFloat(document.getElementById('custom-end-z').value);
+
+    let startX = 0;
+    if (startLaneVal === 'left') startX = 0;
+    else if (startLaneVal === 'right') startX = simulator3D.roadWidth;
+    else {
+      const laneIdx = parseInt(startLaneVal.replace('lane', '')) - 1;
+      startX = (laneIdx + 0.5) * simulator3D.laneWidth;
+    }
+
+    let endX = simulator3D.roadWidth;
+    if (endLaneVal === 'left') endX = 0;
+    else if (endLaneVal === 'right') endX = simulator3D.roadWidth;
+    else {
+      const laneIdx = parseInt(endLaneVal.replace('lane', '')) - 1;
+      endX = (laneIdx + 0.5) * simulator3D.laneWidth;
+    }
+
+    simulator3D.customStartPoint = new THREE.Vector3(startX, 0.1, startZ);
+    simulator3D.customEndPoint = new THREE.Vector3(endX, 0.1, endZ);
+
+    simulator3D.drawMarkerPin(simulator3D.customStartPoint, 'start');
+    simulator3D.drawMarkerPin(simulator3D.customEndPoint, 'end');
+    simulator3D.drawPathLine();
+  }
+
+  if (pathSelect && simulator3D) {
+    simulator3D.pathType = pathSelect.value;
+    pathSelect.addEventListener("change", (e) => {
+      const type = e.target.value;
+      simulator3D.pathType = type;
+      if (customHint) {
+        customHint.style.display = (type === 'custom') ? 'block' : 'none';
+      }
+      if (customControls) {
+        customControls.style.display = (type === 'custom') ? 'block' : 'none';
+      }
+      if (type !== 'custom') {
+        simulator3D.clearCustomPathMarkers();
+      } else {
+        syncCustomPathFromDOM();
+      }
+      
+      // If simulation is active, restart it with new path structure
+      if (simulator3D.active) {
+        simulateBtn.click();
+      }
+    });
+
+    // Wire up sliders for custom path coordinates
+    const startLane = document.getElementById('custom-start-lane');
+    const startZ = document.getElementById('custom-start-z');
+    const endLane = document.getElementById('custom-end-lane');
+    const endZ = document.getElementById('custom-end-z');
+
+    const startZVal = document.getElementById('custom-start-z-val');
+    const endZVal = document.getElementById('custom-end-z-val');
+
+    if (startLane && startZ && endLane && endZ) {
+      [startLane, startZ, endLane, endZ].forEach(el => {
+        el.addEventListener('input', () => {
+          if (startZVal) startZVal.textContent = parseFloat(startZ.value).toFixed(1) + 'm';
+          if (endZVal) endZVal.textContent = parseFloat(endZ.value).toFixed(1) + 'm';
+          
+          syncCustomPathFromDOM();
+          
+          // If simulation is running, trigger rerun to show updated path crossings
+          if (simulator3D.active) {
+            simulateBtn.click();
+          }
+        });
+      });
+    }
+  }
+
+  const clearScoresBtn = document.getElementById("clear-scores-btn");
+  if (clearScoresBtn) {
+    clearScoresBtn.addEventListener("click", () => {
+      localStorage.removeItem("roadsafe_scores");
+      loadLeaderboard();
+    });
+  }
+
+  loadLeaderboard();
+});
+
+// --- LEADERBOARD FUNCTIONS ---
+function loadLeaderboard() {
+  const list = document.getElementById("leaderboard-list");
+  if (!list) return;
+  
+  let scores = [];
+  try {
+    scores = JSON.parse(localStorage.getItem("roadsafe_scores") || "[]");
+  } catch (_) {}
+  
+  if (scores.length === 0) {
+    list.innerHTML = '<div class="empty-state">No scores recorded yet</div>';
+    return;
+  }
+  
+  scores.sort((a,b) => b.score - a.score);
+  const topScores = scores.slice(0, 5);
+  
+  list.innerHTML = topScores.map((s, idx) => `
+    <div class="leaderboard-item">
+      <div class="lb-rank-name">
+        <span class="lb-rank">#${idx+1}</span>
+        <span class="lb-name">${s.name} (${s.level})</span>
+      </div>
+      <div class="lb-score-grade">
+        <span class="lb-score">${Math.round(s.score)}</span>
+        <span class="lb-grade ${s.grade}">${s.grade}</span>
+      </div>
+    </div>
+  `).join("");
+}
+
+window.saveScore = function(score, grade) {
+  let scores = [];
+  try {
+    scores = JSON.parse(localStorage.getItem("roadsafe_scores") || "[]");
+  } catch (_) {}
+  
+  const levelsMap = {
+    level1: 'Lvl 1',
+    level2: 'Lvl 2',
+    level3: 'Lvl 3',
+    level4: 'Lvl 4'
+  };
+  const lvlName = levelsMap[simulator3D ? simulator3D.gameLevel : 'level1'] || 'Lvl 1';
+  
+  scores.push({
+    name: "Player",
+    score: score,
+    grade: grade,
+    level: lvlName,
+    date: new Date().toLocaleDateString()
+  });
+  
+  localStorage.setItem("roadsafe_scores", JSON.stringify(scores));
+  loadLeaderboard();
+};

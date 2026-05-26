@@ -127,17 +127,75 @@
         <div class="best-windows" id="best-windows"></div>
       </div>
 
-    </section>
-
-    <!-- RIGHT COLUMN ────────────────────────────────────── -->
-    <aside class="right-col">
-
       <!-- Crossing Simulator -->
       <section class="card sim-card">
         <h2 class="card-title"><span class="icon">🚶</span> Crossing Simulator</h2>
-        <p class="sim-desc">Choose a time and your walking speed — see if you'd survive.</p>
+        <p class="sim-desc">Choose a time, path, and speed — see if you can make it across.</p>
 
         <div class="sim-form">
+          <div class="form-group">
+            <label>🎮 Game Difficulty / Level</label>
+            <select id="game-level-select" class="form-select full-width">
+              <option value="level1" selected>🟢 Level 1: Suburban Street (2 Lanes, Easy)</option>
+              <option value="level2">🟡 Level 2: Urban Expressway (3 Lanes, Medium)</option>
+              <option value="level3">🔴 Level 3: Neon Highway (4 Lanes, Fast & Foggy)</option>
+              <option value="level4">🔥 Level 4: Chinatown Chaos (3 Lanes, Rush Hour)</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="sim-path-type">Crossing Path</label>
+            <select id="sim-path-type" class="form-select full-width">
+              <option value="straight" selected>🚶 Straight (Zebra Crossing)</option>
+              <option value="diagonal-left">↔️ Diagonal (Left-to-Right)</option>
+              <option value="diagonal-right">↔️ Diagonal (Right-to-Left)</option>
+              <option value="custom">📍 Custom (Click on Sidewalks)</option>
+            </select>
+            <div id="custom-path-hint" style="display: none; font-size: 0.7rem; color: var(--accent); margin-top: 6px; font-style: italic;">
+              💡 Click on any two points in the 3D view to set custom Start and End points!
+            </div>
+            
+            <!-- Easy-to-use Custom Path coordinates chooser -->
+            <div id="custom-path-controls" style="display: none; margin-top: 10px; padding: 12px; background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 8px;">
+              <div class="form-group-custom" style="margin-bottom: 8px;">
+                <label style="font-size: 0.75rem; color: var(--text-2); display: block; margin-bottom: 4px;">🟢 Start Curb / Lane</label>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                  <select id="custom-start-lane" class="form-select" style="flex: 1.5; font-size: 0.75rem; padding: 4px 8px; background: var(--surface2); color: var(--text); border: 1px solid var(--border);">
+                    <option value="left" selected>🟢 Left Sidewalk</option>
+                    <option value="lane1">🚗 Lane 1</option>
+                    <option value="lane2">🚗 Lane 2</option>
+                    <option value="lane3">🚗 Lane 3</option>
+                    <option value="lane4">🚗 Lane 4</option>
+                    <option value="right">🔴 Right Sidewalk</option>
+                  </select>
+                  <div style="display: flex; align-items: center; gap: 4px; flex: 1.2;">
+                    <span style="font-size: 0.7rem; color: var(--text-3); font-weight: bold;">Z:</span>
+                    <input type="range" id="custom-start-z" min="-15" max="15" step="0.5" value="0" style="width: 100%;" />
+                    <span id="custom-start-z-val" style="font-family: var(--mono); font-size: 0.7rem; color: var(--cyan); min-width: 32px; text-align: right;">0.0m</span>
+                  </div>
+                </div>
+              </div>
+              <div class="form-group-custom">
+                <label style="font-size: 0.75rem; color: var(--text-2); display: block; margin-bottom: 4px;">🔴 End Curb / Lane</label>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                  <select id="custom-end-lane" class="form-select" style="flex: 1.5; font-size: 0.75rem; padding: 4px 8px; background: var(--surface2); color: var(--text); border: 1px solid var(--border);">
+                    <option value="left">🟢 Left Sidewalk</option>
+                    <option value="lane1">🚗 Lane 1</option>
+                    <option value="lane2">🚗 Lane 2</option>
+                    <option value="lane3">🚗 Lane 3</option>
+                    <option value="lane4">🚗 Lane 4</option>
+                    <option value="right" selected>🔴 Right Sidewalk</option>
+                  </select>
+                  <div style="display: flex; align-items: center; gap: 4px; flex: 1.2;">
+                    <span style="font-size: 0.7rem; color: var(--text-3); font-weight: bold;">Z:</span>
+                    <input type="range" id="custom-end-z" min="-15" max="15" step="0.5" value="0" style="width: 100%;" />
+                    <span id="custom-end-z-val" style="font-family: var(--mono); font-size: 0.7rem; color: var(--cyan); min-width: 32px; text-align: right;">0.0m</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div class="form-group">
             <label for="sim-time">Cross at (seconds into video)</label>
             <div class="input-row">
@@ -145,6 +203,7 @@
               <input type="number" id="sim-time" min="0" max="9999" step="0.5" value="5" class="mono-input" />
             </div>
           </div>
+
           <div class="form-group">
             <label for="sim-speed">Walking speed (m/s)</label>
             <div class="input-row">
@@ -172,9 +231,129 @@
               <div class="result-sub" id="result-sub">—</div>
             </div>
           </div>
-          <!-- Advanced 2D Trajectory Simulation Canvas -->
-          <div class="sim-canvas-container" style="margin-top: 15px; margin-bottom: 15px; background: rgba(10, 15, 30, 0.6); border-radius: 8px; border: 1px solid rgba(255,255,255,0.08); overflow: hidden; position: relative;">
-            <canvas id="sim-canvas" width="400" height="180" style="display: block; width: 100%; height: auto;"></canvas>
+          <!-- Advanced 3D Trajectory Simulation Canvas -->
+          <div class="sim-canvas-container" style="margin-top: 15px; margin-bottom: 15px; background: rgba(10, 15, 30, 0.6); border-radius: 8px; border: 1px solid rgba(255,255,255,0.08); overflow: hidden; position: relative; height: 460px;">
+            <canvas id="sim-canvas" style="display: block; width: 100%; height: 100%;"></canvas>
+            
+            <!-- Slow Motion Indicator -->
+            <div id="sim-slomo-badge" style="display: none; position: absolute; top: 15px; right: 15px; background: rgba(244, 63, 94, 0.85); color: #fff; padding: 6px 12px; border-radius: 4px; font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; pointer-events: none; z-index: 10; border: 1px solid rgba(255,255,255,0.25); box-shadow: 0 4px 12px rgba(244,63,94,0.3); backdrop-filter: blur(4px); align-items: center; gap: 6px;">
+              <span class="slomo-pulse-dot"></span>
+              COLLISION SLO-MO
+            </div>
+
+            <!-- Left / Right Sideview Inset Frame HUD overlays -->
+            <div id="sim-pip-left" class="sim-pip-frame" style="display: none;">
+              <span class="pip-label">👀 LOOK LEFT</span>
+            </div>
+            <div id="sim-pip-right" class="sim-pip-frame" style="display: none;">
+              <span class="pip-label">👀 LOOK RIGHT</span>
+            </div>
+            
+            <!-- Proximity Danger Warning Vignette -->
+            <div id="sim-danger-vignette" class="sim-danger-vignette" style="display: none;"></div>
+
+            <!-- Fullscreen Wasted & Survived Overlays -->
+            <div id="sim-wasted-screen" class="sim-game-overlay wasted-screen" style="display: none;">
+              <div class="wasted-banner">WASTED</div>
+              <div class="overlay-stats">
+                <div>💥 IMPACT FORCE: <span id="wasted-force" class="text-red">0 kN</span></div>
+                <div>🚗 CAR SPEED: <span id="wasted-speed" class="text-yellow">0 km/h</span></div>
+              </div>
+              <button class="btn btn-restart" id="wasted-retry-btn">🔄 TRY AGAIN</button>
+            </div>
+
+            <div id="sim-survived-screen" class="sim-game-overlay survived-screen" style="display: none;">
+              <div class="survived-banner">SURVIVED!</div>
+              <div class="overlay-stats">
+                <div>🏆 SCORE: <span id="survived-score" class="text-green">0000</span></div>
+                <div>🛡️ GRADE: <span id="survived-grade" class="grade-badge">S</span></div>
+              </div>
+              <button class="btn btn-restart" id="survived-restart-btn">▶ PLAY AGAIN</button>
+            </div>
+
+            <!-- Real-time HUD elements -->
+            <div id="sim-hud" class="sim-hud" style="display: none;">
+              <!-- Lives/Hearts -->
+              <div class="hud-item hud-hearts">
+                <span class="hud-label">HEALTH</span>
+                <div class="hearts-container" id="hud-hearts-container">❤️ ❤️ ❤️</div>
+              </div>
+              <!-- Score -->
+              <div class="hud-item hud-score">
+                <span class="hud-label">SCORE</span>
+                <span id="hud-score-val" class="hud-val">1000</span>
+              </div>
+              <!-- Proximity Status badge -->
+              <div class="hud-item hud-alert" id="hud-alert-badge" style="display: none;">
+                <span class="alert-pulse-dot"></span>
+                <span id="hud-alert-text">PROXIMITY DANGER</span>
+              </div>
+              <!-- Powerup Status badge -->
+              <div class="hud-item hud-powerup" id="hud-powerup-badge" style="display: none;">
+                <span id="hud-powerup-icon" style="margin-right: 4px;">⚡</span>
+                <span id="hud-powerup-text" style="font-weight: 700;">SPEED BOOST</span>
+                <span id="hud-powerup-timer" style="margin-left: 8px; font-family: var(--mono); color: var(--yellow);">2.0s</span>
+              </div>
+            </div>
+
+            <!-- Interactive Keyboard Controls Overlay HUD -->
+            <div id="sim-controls-hud" class="sim-controls-hud" style="display: none;">
+              <div class="controls-keys">
+                <div class="key" id="key-w">W</div>
+                <div class="key-row">
+                  <div class="key" id="key-a">A</div>
+                  <div class="key" id="key-s">S</div>
+                  <div class="key" id="key-d">D</div>
+                </div>
+                <div class="key-row" style="margin-top: 4px; gap: 8px;">
+                  <div class="key" id="key-q" style="width: 32px;">Q</div>
+                  <div class="key" id="key-e" style="width: 32px;">E</div>
+                </div>
+              </div>
+              <div class="controls-desc" id="controls-desc-text">WASD to Move • Q/E to Look Left/Right</div>
+            </div>
+            
+          </div>
+
+          <!-- Dedicated Simulation Controls Bar (Always Visible outside Canvas) -->
+          <div class="sim-controls-bar" id="sim-controls-bar" style="display: none;">
+            <!-- Segment 1: Playback -->
+            <div class="bar-segment">
+              <span class="segment-label">Playback</span>
+              <div class="btn-group">
+                <button class="game-btn active" id="sim-play-pause-btn" title="Play/Pause">⏸ Pause</button>
+                <button class="game-btn" id="sim-restart-btn" title="Restart Simulation">🔄 Restart</button>
+              </div>
+            </div>
+
+            <!-- Segment 2: Time Theme -->
+            <div class="bar-segment">
+              <span class="segment-label">Theme</span>
+              <div class="btn-group">
+                <button class="theme-btn active" data-theme="day" title="Sunny Day">☀️ Day</button>
+                <button class="theme-btn" data-theme="sunset" title="Golden Hour">🌇 Sunset</button>
+                <button class="theme-btn" data-theme="night" title="Midnight Neon">🌙 Night</button>
+              </div>
+            </div>
+
+            <!-- Segment 3: Play Mode -->
+            <div class="bar-segment">
+              <span class="segment-label">Play Mode</span>
+              <div class="btn-group">
+                <button class="game-btn active" id="mode-auto-btn">🤖 Auto</button>
+                <button class="game-btn" id="mode-play-btn">🕹️ Play</button>
+              </div>
+            </div>
+
+            <!-- Segment 4: Camera View -->
+            <div class="bar-segment">
+              <span class="segment-label">Camera</span>
+              <div class="btn-group">
+                <button class="game-btn active" id="view-orbit-btn" data-view="orbit">🎥 Orbit Overview</button>
+                <button class="game-btn" id="view-tpv-btn" data-view="chase">👤 3rd Person Cam</button>
+                <button class="game-btn" id="view-fpv-btn" data-view="pedestrian">👁️ 1st Person FPV</button>
+              </div>
+            </div>
           </div>
           <div class="result-stats">
             <div class="rs-item">
@@ -197,6 +376,11 @@
           <div class="result-rec" id="result-rec">—</div>
         </div>
       </section>
+
+    </section>
+
+    <!-- RIGHT COLUMN ────────────────────────────────────── -->
+    <aside class="right-col">
 
       <!-- Nearest Vehicles Table -->
       <section class="card table-card">
@@ -223,12 +407,32 @@
         </div>
       </section>
 
+      <!-- Leaderboard Card -->
+      <section class="card leaderboard-card">
+        <h2 class="card-title"><span class="icon">🏆</span> Leaderboard</h2>
+        <div id="leaderboard-list">
+          <div class="empty-state">No scores recorded yet</div>
+        </div>
+        <button class="btn btn-accent full-width" id="clear-scores-btn" style="margin-top: 10px; padding: 6px 12px; font-size: 0.72rem;">
+          🧹 Reset High Scores
+        </button>
+      </section>
+
     </aside>
 
   </main>
 
   <!-- Chart.js CDN -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-  <script src="app.js"></script>
+  
+  <!-- Local Three.js + OrbitControls for robust loading and offline/adblock compatibility -->
+  <script src="three.min.js"></script>
+  <script src="OrbitControls.js"></script>
+  
+  <!-- 3D Simulator Script -->
+  <script src="sim3d.js?v=1.2"></script>
+  
+  <!-- Main Application Logic -->
+  <script src="app.js?v=1.2"></script>
 </body>
 </html>

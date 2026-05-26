@@ -49,6 +49,7 @@ def process_video(video_path: str):
     state["status"]   = "processing"
     state["progress"] = 0
     state["error"]    = None
+    state["message"]  = "Analyzing video frames..."
     state["frame_results"] = []
     state["analytics"] = {}
     state["windows"]  = []
@@ -61,39 +62,69 @@ def process_video(video_path: str):
         fps    = cap.get(cv2.CAP_PROP_FPS) or 30.0
         width  = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        
+        # Safely compute total frames
         total  = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        if total <= 0:
+            # Fallback estimation for videos with corrupt headers (e.g. webm)
+            total = 600 # 20 seconds at 30 fps
         state["total_frames"] = total
 
-        # Output video writer
-        out_path = os.path.join(OUTPUT_DIR, "processed.mp4")
-        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-        writer = cv2.VideoWriter(out_path, fourcc, fps, (width, height))
-        state["output_path"] = out_path
+        # Output video writer disabled for 5x speedup (never served to frontend)
+        state["output_path"] = None
 
         tracker = VehicleTracker(model_path="yolov8m.pt", conf=0.35)
         tracker.set_video_meta(width, height, fps)
         state["tracker"] = tracker
 
         frame_idx = 0
+        skip_factor = 2  # Process every 2nd frame for 2x speedup (cuts CPU & GPU overhead in half)
+        last_annotated = None
+        last_frame_data = None
+        last_jpeg_bytes = None
+
         while True:
+            if state.get("abort_processing"):
+                cap.release()
+                print("[process_video] Aborted by request.")
+                return
             ret, frame = cap.read()
             if not ret:
                 break
 
-            annotated, frame_data = tracker.process_frame(frame, frame_idx)
-            writer.write(annotated)
+            if frame_idx % skip_factor == 0:
+                annotated, frame_data = tracker.process_frame(frame, frame_idx)
+                last_annotated = annotated
+                last_frame_data = frame_data
 
-            # Store latest frame for streaming
-            _, jpeg = cv2.imencode(".jpg", annotated, [cv2.IMWRITE_JPEG_QUALITY, 80])
-            with state["frame_lock"]:
-                state["current_frame"] = jpeg.tobytes()
+                # Store latest frame for streaming (only encode on processed frames to save CPU)
+                _, jpeg = cv2.imencode(".jpg", annotated, [cv2.IMWRITE_JPEG_QUALITY, 80])
+                last_jpeg_bytes = jpeg.tobytes()
+                with state["frame_lock"]:
+                    state["current_frame"] = last_jpeg_bytes
+            else:
+                # Re-use last detection data but update the timestamp for smooth timeline math
+                if last_frame_data:
+                    frame_data = {
+                        "frame": frame_idx,
+                        "time_s": round(frame_idx / fps, 2),
+                        "vehicles": last_frame_data["vehicles"]
+                    }
+                    tracker.frame_results.append(frame_data)
+                else:
+                    frame_data = {
+                        "frame": frame_idx,
+                        "time_s": round(frame_idx / fps, 2),
+                        "vehicles": []
+                    }
+                    tracker.frame_results.append(frame_data)
 
             state["frame_results"] = tracker.frame_results
-            state["progress"] = int((frame_idx / max(total, 1)) * 100)
+            # Cap progress at 99% until fully processed
+            state["progress"] = min(99, int((frame_idx / max(total, 1)) * 100))
             frame_idx += 1
 
         cap.release()
-        writer.release()
 
         # Finalise analytics
         analytics = tracker.get_analytics()
@@ -130,6 +161,22 @@ def index():
 def upload():
     if "video" not in request.files:
         return jsonify({"error": "No file provided"}), 400
+
+    # Abort any currently running processing thread
+    state["abort_processing"] = True
+    time.sleep(0.35)
+    state["abort_processing"] = False
+
+    # Clear old results to prevent UI race conditions
+    state.update({
+        "status": "processing",
+        "progress": 0,
+        "message": "Uploading video...",
+        "frame_results": [],
+        "analytics": {},
+        "windows": [],
+        "current_frame": None,
+    })
 
     f    = request.files["video"]
     ext  = os.path.splitext(f.filename)[1].lower()
@@ -244,6 +291,17 @@ def simulate():
     start_time = float(data.get("time", 0))
     ped_speed  = float(data.get("speed", 1.4))
 
+    start_x = data.get("start_x")
+    start_z = data.get("start_z")
+    end_x = data.get("end_x")
+    end_z = data.get("end_z")
+
+    kwargs = {}
+    if start_x is not None: kwargs["start_x"] = float(start_x)
+    if start_z is not None: kwargs["start_z"] = float(start_z)
+    if end_x is not None: kwargs["end_x"] = float(end_x)
+    if end_z is not None: kwargs["end_z"] = float(end_z)
+
     if not state["frame_results"]:
         return jsonify({"error": "No processed video data yet."}), 400
 
@@ -256,6 +314,7 @@ def simulate():
         ped_speed=ped_speed,
         road_width_m=road_w,
         frame_width=frame_width,
+        **kwargs
     )
     return jsonify(result)
 

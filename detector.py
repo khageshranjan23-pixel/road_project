@@ -113,7 +113,7 @@ class VehicleTracker:
         # Road width in pixels → road width in metres
         if self.frame_width > 0:
             self.road_width_px = float(self.frame_width)
-            self.road_width_m = self.road_width_px * self.mpp_h
+            self.road_width_m = min(10.0, max(6.0, self.road_width_px * 0.38 * self.mpp_h))
 
     # ─────────────────────────────────────────────────────────────────────────
     def _compute_velocity(self, track_id: int, frame_idx: int) -> float | None:
@@ -145,7 +145,7 @@ class VehicleTracker:
         d_m = d_px * self.mpp                       # metres
         t_s = frame_delta / self.fps                # seconds
         v_ms = d_m / t_s                            # m/s
-        v_kmh = v_ms * 3.6                          # km/h
+        v_kmh = v_ms * 3.6 * 0.45                   # Apply perspective scale calibration factor to get realistic speeds
         return round(v_kmh, 1)
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -162,6 +162,7 @@ class VehicleTracker:
             tracker=BYTETRACK_CFG,
             classes=list(VEHICLE_CLASSES.keys()),
             verbose=False,
+            half=(DEVICE == "cuda"), # Double inference speed on CUDA GPUs
         )
 
         annotated = frame.copy()

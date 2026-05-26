@@ -130,11 +130,15 @@ def main():
         ped_speed=1.4,
         road_width_m=road_w,
     )
+    arrivals = [v["t_arrival"] for v in result["simulated_vehicles"] if v["t_arrival"] > 0]
+    min_arrival = min(arrivals) if arrivals else None
+    min_margin = min_arrival - result["cross_time"] if min_arrival is not None else 99.0
+
     print(f"  Crossing at t={test_time}s, speed=1.4 m/s:")
     print(f"  Result  : {result['result']}")
     print(f"  Safe    : {result['safe']}")
-    print(f"  Gap     : {result['gap_to_nearest']}s")
-    print(f"  Margin  : {result['margin_s']}s")
+    print(f"  Gap     : {min_arrival:.2f}s" if min_arrival is not None else "  Gap     : clear")
+    print(f"  Margin  : {min_margin:+.2f}s" if min_margin != 99.0 else "  Margin  : —")
     print(f"  Advice  : {result['recommendation']}")
 
     print("\n" + "="*60)

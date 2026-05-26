@@ -99,15 +99,27 @@ def simulate_crossing(
     frame_width: int = 1920,
     safety_buffer: float = SAFETY_BUFFER,
     fps: float = 30.0,
+    start_x: float = 0.0,
+    start_z: float = 0.0,
+    end_x: float = None,
+    end_z: float = 0.0,
 ) -> dict:
     """
     Advanced lane-aware physical crossing simulation.
     Simulates pedestrian walking across N lanes, and tracks the trajectory
     of all active vehicles to detect lane-specific collisions.
     """
+    if end_x is None:
+        end_x = road_width_m
+
     num_lanes = 3
     lane_width = road_width_m / num_lanes
-    cross_time = road_width_m / ped_speed
+    
+    # Calculate path distance
+    dx_path = end_x - start_x
+    dz_path = end_z - start_z
+    path_dist = np.sqrt(dx_path**2 + dz_path**2)
+    cross_time = path_dist / ped_speed if ped_speed > 0 else 99.0
     end_time = start_time + cross_time
 
     # Find active vehicles at start_time: scan ±1.5s window
@@ -179,6 +191,42 @@ def simulate_crossing(
                 "dist_m": round(float(current_dist), 2),
             })
 
+        # Estimate vehicle width based on class
+        veh_width = 1.8
+        if v_class in ["truck", "bus"]:
+            veh_width = 2.3
+        elif v_class in ["motorcycle", "bicycle"]:
+            veh_width = 0.8
+            
+        ped_width = 0.5 # Pedestrian shoulder width
+        lane_center_x = (lane - 0.5) * lane_width
+
+        # Direction of traffic: odd lanes go North (+Z, dir = 1), even lanes go South (-Z, dir = -1)
+        direction = 1 if (lane % 2 != 0) else -1
+
+        # Check collision step-by-step
+        collision_detected = False
+        collision_t = None
+
+        for t in t_steps:
+            if t > cross_time:
+                break
+            
+            # Pedestrian coordinates at time t
+            ped_x = start_x + dx_path * (t / cross_time) if cross_time > 0 else start_x
+            ped_z = start_z + dz_path * (t / cross_time) if cross_time > 0 else start_z
+
+            # Vehicle coordinates at time t
+            veh_z = direction * (t - t_arrival) * vel_ms
+            veh_x = lane_center_x
+
+            # Check bounding box overlap
+            if abs(ped_x - veh_x) < (veh_width / 2 + ped_width / 2) and \
+               abs(ped_z - veh_z) < (veh_len / 2 + ped_width / 2):
+                collision_detected = True
+                collision_t = t
+                break
+
         sim_veh = {
             "id": v_id,
             "class": v_class,
@@ -189,24 +237,16 @@ def simulate_crossing(
             "t_enter": round(t_enter, 2),
             "t_exit": round(t_exit, 2),
             "trajectory": trajectory,
-            "collision": False,
+            "collision": collision_detected,
         }
 
-        # Check for collision
-        ped_enter_lane_t = (lane - 1) * lane_width / ped_speed
-        ped_exit_lane_t = lane * lane_width / ped_speed
-
-        overlap_start = max(ped_enter_lane_t, t_enter)
-        overlap_end = min(ped_exit_lane_t, t_exit)
-
-        if overlap_start < overlap_end:
-            sim_veh["collision"] = True
+        if collision_detected:
             collisions.append({
-                "time": round(float(overlap_start), 2),
+                "time": round(float(collision_t), 2),
                 "lane": lane,
                 "vehicle": sim_veh,
             })
-
+        
         simulated_vehicles.append(sim_veh)
 
     # Sort simulated vehicles by arrival time
@@ -254,6 +294,10 @@ def simulate_crossing(
         "num_lanes": num_lanes,
         "lane_width": round(lane_width, 2),
         "road_width_m": round(road_width_m, 2),
+        "start_x": start_x,
+        "start_z": start_z,
+        "end_x": end_x,
+        "end_z": end_z,
         "simulated_vehicles": simulated_vehicles,
         "collisions": collisions,
     }
